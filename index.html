@@ -555,7 +555,7 @@ function renderProdotti(){
     wrap.innerHTML=ids.map(id=>{
       const p=prodotti[id];
       return `<div class="card" data-id="${id}">
-        <div class="info"><b>${esc(p.nome)}</b><span>${esc(p.unita||'pz')}</span></div>
+        <div class="info"><b>${esc(p.nome)}</b><span>${p.ml?p.ml+' ml':''}${p.ml&&p.descrizione?' &middot; ':''}${esc(p.descrizione||'')}</span></div>
         <div class="amount">${euro(p.prezzo)}</div>
         <div class="card-actions">
           <button class="mini-btn edit-prodotto" data-id="${id}">${iconEdit}</button>
@@ -572,12 +572,13 @@ function renderProdotti(){
 document.getElementById('search-prodotti').addEventListener('input', renderProdotti);
 
 function openProdottoModal(id){
-  const p=id?prodotti[id]:{nome:'',prezzo:'',unita:'pz'};
+  const p=id?prodotti[id]:{nome:'',descrizione:'',ml:'',prezzo:''};
   const sheet=modalSheet(`
     <h3>${id?'Modifica prodotto':'Nuovo prodotto'}</h3>
     <div class="field"><label>Nome *</label><input id="m-nome" value="${escAttr(p.nome)}" required></div>
+    <div class="field"><label>Descrizione</label><input id="m-descrizione" value="${escAttr(p.descrizione||'')}" placeholder="es. crema idratante corpo"></div>
+    <div class="field"><label>Millilitri (ml)</label><input id="m-ml" type="number" step="1" min="0" value="${p.ml??''}" placeholder="es. 100"></div>
     <div class="field"><label>Prezzo unitario (&euro;) *</label><input id="m-prezzo" type="number" step="0.01" min="0" value="${p.prezzo??''}" required></div>
-    <div class="field"><label>Unit&agrave; di misura</label><input id="m-unita" value="${escAttr(p.unita||'pz')}" placeholder="pz, kg, mt..."></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">Annulla</button>
       <button class="btn btn-primary" id="m-save">Salva</button>
@@ -588,7 +589,12 @@ function openProdottoModal(id){
     const nome=sheet.querySelector('#m-nome').value.trim();
     const prezzo=parseFloat(sheet.querySelector('#m-prezzo').value);
     if(!nome||isNaN(prezzo)){ toast('Compila nome e prezzo'); return; }
-    const data={nome, prezzo, unita:sheet.querySelector('#m-unita').value.trim()||'pz'};
+    const mlVal=sheet.querySelector('#m-ml').value;
+    const data={
+      nome, prezzo,
+      descrizione:sheet.querySelector('#m-descrizione').value.trim(),
+      ml: mlVal===''? '' : parseFloat(mlVal)
+    };
     if(id){ db.ref('prodotti/'+id).update(data); } else { db.ref('prodotti').push({...data, creato:Date.now()}); }
     toast('Prodotto salvato');
     closeModal();
@@ -617,7 +623,7 @@ function renderRighe(){
       <div class="riga-top">
         <select class="riga-prodotto">
           <option value="">Prodotto...</option>
-          ${opts.map(id=>`<option value="${id}" ${r.prodottoId===id?'selected':''}>${esc(prodotti[id].nome)}</option>`).join('')}
+          ${opts.map(id=>`<option value="${id}" ${r.prodottoId===id?'selected':''}>${esc(prodotti[id].nome)}${prodotti[id].ml?' ('+prodotti[id].ml+'ml)':''}</option>`).join('')}
         </select>
         <button class="remove-riga">${iconTrash}</button>
       </div>
@@ -668,6 +674,7 @@ document.getElementById('salva-ordine-btn').addEventListener('click', ()=>{
   const righe=righeValide.map(r=>({
     prodottoId:r.prodottoId,
     nome:prodotti[r.prodottoId]?.nome||'',
+    ml:prodotti[r.prodottoId]?.ml||'',
     quantita:r.quantita,
     prezzo:r.prezzo,
     totale:r.quantita*r.prezzo
@@ -725,7 +732,7 @@ function renderStorico(){
           </div>
         </div>
         <div class="order-detail-rows hidden" id="detail-${id}">
-          ${(o.righe||[]).map(r=>`<div><span>${esc(r.nome)} &times; ${r.quantita}</span><span>${euro(r.totale)}</span></div>`).join('')}
+          ${(o.righe||[]).map(r=>`<div><span>${esc(r.nome)}${r.ml?' ('+r.ml+'ml)':''} &times; ${r.quantita}</span><span>${euro(r.totale)}</span></div>`).join('')}
         </div>
       </div>`;
     }).join('');
