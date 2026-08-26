@@ -457,16 +457,27 @@ function moveIndicator(btn){
   indicator.style.width=btn.offsetWidth+'px';
   indicator.style.transform=`translateX(${btn.offsetLeft}px)`;
 }
+const fabBtn=document.getElementById('fab-add');
 function setView(name){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   tabBtns.forEach(b=>b.classList.toggle('active', b.dataset.view===name));
   pageTitle.textContent=titles[name];
   moveIndicator(tabBtns.find(b=>b.dataset.view===name));
+  if(name==='clienti'||name==='prodotti'){
+    fabBtn.classList.remove('hidden');
+    fabBtn.dataset.for=name;
+  }else{
+    fabBtn.classList.add('hidden');
+  }
 }
+fabBtn.addEventListener('click', ()=>{
+  if(fabBtn.dataset.for==='clienti') openClienteModal();
+  else if(fabBtn.dataset.for==='prodotti') openProdottoModal();
+});
 tabBtns.forEach(btn=>btn.addEventListener('click',()=>setView(btn.dataset.view)));
 window.addEventListener('resize', ()=>moveIndicator(tabBtns.find(b=>b.classList.contains('active'))));
-window.addEventListener('load', ()=>moveIndicator(tabBtns[0]));
+window.addEventListener('load', ()=>{ moveIndicator(tabBtns[0]); setView('clienti'); });
 
 /* ---------------- FIREBASE LISTENERS ---------------- */
 function attachListeners(){
