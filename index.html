@@ -134,10 +134,11 @@ main#content{flex:1;padding:0 16px 100px;position:relative;}
   transition:transform .12s;
 }
 .card:active{transform:scale(0.985);}
-.card .info b{display:block;font-size:15px;}
-.card .info span{display:block;font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
-.card .amount{font-family:var(--font-mono);font-weight:600;color:var(--primary);white-space:nowrap;}
-.card-actions{display:flex;gap:4px;}
+.card .info{flex:1;min-width:0;overflow:hidden;}
+.card .info b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.card .info span{display:block;font-size:12.5px;color:var(--ink-soft);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.card .amount{font-family:var(--font-mono);font-weight:600;color:var(--primary);white-space:nowrap;flex-shrink:0;}
+.card-actions{display:flex;gap:4px;flex-shrink:0;}
 .mini-btn{background:transparent;border:none;color:var(--ink-soft);padding:6px;border-radius:8px;}
 .mini-btn:hover{background:var(--line);}
 .mini-btn.danger:hover{color:var(--danger);}
