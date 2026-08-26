@@ -524,14 +524,12 @@ function renderClienti(){
 document.getElementById('search-clienti').addEventListener('input', renderClienti);
 
 function openClienteModal(id){
-  const c=id?clienti[id]:{nome:'',telefono:'',email:'',indirizzo:'',note:''};
+  const c=id?clienti[id]:{nome:'',telefono:'',email:''};
   const sheet=modalSheet(`
     <h3>${id?'Modifica cliente':'Nuovo cliente'}</h3>
-    <div class="field"><label>Nome *</label><input id="m-nome" value="${escAttr(c.nome)}" required></div>
+    <div class="field"><label>Nome e Cognome *</label><input id="m-nome" value="${escAttr(c.nome)}" required></div>
     <div class="field"><label>Telefono</label><input id="m-tel" value="${escAttr(c.telefono||'')}"></div>
     <div class="field"><label>Email</label><input id="m-email" value="${escAttr(c.email||'')}"></div>
-    <div class="field"><label>Indirizzo</label><input id="m-indirizzo" value="${escAttr(c.indirizzo||'')}"></div>
-    <div class="field"><label>Note</label><input id="m-note" value="${escAttr(c.note||'')}"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">Annulla</button>
       <button class="btn btn-primary" id="m-save">Salva</button>
@@ -545,8 +543,6 @@ function openClienteModal(id){
       nome,
       telefono:sheet.querySelector('#m-tel').value.trim(),
       email:sheet.querySelector('#m-email').value.trim(),
-      indirizzo:sheet.querySelector('#m-indirizzo').value.trim(),
-      note:sheet.querySelector('#m-note').value.trim(),
     };
     if(id){ db.ref('clienti/'+id).update(data); } else { db.ref('clienti').push({...data, creato:Date.now()}); }
     toast('Cliente salvato');
@@ -566,7 +562,7 @@ function renderProdotti(){
     wrap.innerHTML=ids.map(id=>{
       const p=prodotti[id];
       return `<div class="card" data-id="${id}">
-        <div class="info"><b>${esc(p.nome)}</b><span>${p.ml?p.ml+' ml':''}${p.ml&&p.descrizione?' &middot; ':''}${esc(p.descrizione||'')}</span></div>
+        <div class="info"><b>${esc(p.nome)}</b><span>${p.ml?p.ml+' ml':''}</span></div>
         <div class="amount">${euro(p.prezzo)}</div>
         <div class="card-actions">
           <button class="mini-btn edit-prodotto" data-id="${id}">${iconEdit}</button>
@@ -583,13 +579,12 @@ function renderProdotti(){
 document.getElementById('search-prodotti').addEventListener('input', renderProdotti);
 
 function openProdottoModal(id){
-  const p=id?prodotti[id]:{nome:'',descrizione:'',ml:'',prezzo:''};
+  const p=id?prodotti[id]:{nome:'',ml:'',prezzo:''};
   const sheet=modalSheet(`
     <h3>${id?'Modifica prodotto':'Nuovo prodotto'}</h3>
     <div class="field"><label>Nome *</label><input id="m-nome" value="${escAttr(p.nome)}" required></div>
-    <div class="field"><label>Descrizione</label><input id="m-descrizione" value="${escAttr(p.descrizione||'')}" placeholder="es. crema idratante corpo"></div>
     <div class="field"><label>Millilitri (ml)</label><input id="m-ml" type="number" step="1" min="0" value="${p.ml??''}" placeholder="es. 100"></div>
-    <div class="field"><label>Prezzo unitario (&euro;) *</label><input id="m-prezzo" type="number" step="0.01" min="0" value="${p.prezzo??''}" required></div>
+    <div class="field"><label>Prezzo (&euro;) *</label><input id="m-prezzo" type="number" step="0.01" min="0" value="${p.prezzo??''}" required></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">Annulla</button>
       <button class="btn btn-primary" id="m-save">Salva</button>
@@ -603,7 +598,6 @@ function openProdottoModal(id){
     const mlVal=sheet.querySelector('#m-ml').value;
     const data={
       nome, prezzo,
-      descrizione:sheet.querySelector('#m-descrizione').value.trim(),
       ml: mlVal===''? '' : parseFloat(mlVal)
     };
     if(id){ db.ref('prodotti/'+id).update(data); } else { db.ref('prodotti').push({...data, creato:Date.now()}); }
