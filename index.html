@@ -13,6 +13,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<!-- SheetJS (export Excel) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <style>
 :root{
@@ -246,6 +248,18 @@ nav#tabbar{
 .order-detail-rows{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px;}
 .order-detail-rows div{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;color:var(--ink-soft);}
 .order-detail-rows div span:last-child{font-family:var(--font-mono);color:var(--ink);}
+.stato-select{
+  appearance:none;-webkit-appearance:none;border:none;border-radius:8px;
+  padding:5px 22px 5px 9px;font-size:10.5px;font-weight:700;letter-spacing:0.02em;
+  color:#fff;background-repeat:no-repeat;background-position:right 6px center;background-size:10px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.export-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--primary);
+  background:transparent;color:var(--primary);font-weight:600;font-size:14px;margin-bottom:14px;
+}
+.export-btn:active{transform:scale(0.98);}
 
 /* ---------- STAMP ---------- */
 #stamp{
@@ -341,6 +355,10 @@ nav#tabbar{
         <input type="date" id="filtro-a">
       </div>
       <div class="sum-bar"><span>Totale nel periodo</span><b id="somma-storico">&euro; 0,00</b></div>
+      <button class="export-btn" id="export-btn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Esporta in Excel
+      </button>
       <div id="lista-ordini"></div>
     </section>
 
@@ -634,7 +652,7 @@ function renderRighe(){
         <button class="remove-riga">${iconTrash}</button>
       </div>
       <div class="riga-bottom">
-        <label>Qt.</label><input class="riga-qta" type="number" step="0.01" min="0.01" value="${r.quantita}">
+        <label>Qt.</label><input class="riga-qta" type="number" step="1" min="1" value="${r.quantita}">
         <label>Prezzo</label><input class="riga-prezzo" type="number" step="0.01" min="0" value="${r.prezzo}">
         <span class="riga-tot">${euro(r.quantita*r.prezzo)}</span>
       </div>
@@ -650,7 +668,7 @@ function renderRighe(){
       renderRighe(); aggiornaTotaleOrdine();
     });
     el.querySelector('.riga-qta').addEventListener('input', e=>{
-      righeCorrenti[i].quantita=parseFloat(e.target.value)||0;
+      righeCorrenti[i].quantita=parseInt(e.target.value,10)||0;
       el.querySelector('.riga-tot').textContent=euro(righeCorrenti[i].quantita*righeCorrenti[i].prezzo);
       aggiornaTotaleOrdine();
     });
@@ -689,7 +707,7 @@ document.getElementById('salva-ordine-btn').addEventListener('click', ()=>{
 
   db.ref('ordini').push({
     clienteId, clienteNome:clienti[clienteId]?.nome||'',
-    righe, totale, data:Date.now()
+    righe, totale, data:Date.now(), stato:'rosso'
   }).then(()=>{
     mostraTimbro();
     righeCorrenti=[];
@@ -708,6 +726,13 @@ function mostraTimbro(){
 }
 
 /* ---------------- STORICO ---------------- */
+const STATI={
+  rosso:{label:'NON CONSEGNATO', color:'#B3261E'},
+  arancio:{label:'CONSEGNATO', color:'#E07B1D'},
+  verde:{label:'PAGATO', color:'#2E7D46'}
+};
+let idsStoricoCorrenti=[];
+
 function renderStorico(){
   const wrap=document.getElementById('lista-ordini');
   const clienteF=document.getElementById('filtro-cliente').value;
@@ -719,6 +744,7 @@ function renderStorico(){
   if(da) ids=ids.filter(id=>ordini[id].data>=da);
   if(a) ids=ids.filter(id=>ordini[id].data<a);
   ids.sort((x,y)=>ordini[y].data-ordini[x].data);
+  idsStoricoCorrenti=ids;
 
   const somma=ids.reduce((s,id)=>s+(ordini[id].totale||0),0);
   document.getElementById('somma-storico').textContent=euro(somma);
@@ -728,7 +754,9 @@ function renderStorico(){
   }else{
     wrap.innerHTML=ids.map(id=>{
       const o=ordini[id];
-      return `<div class="card" style="flex-direction:column;align-items:stretch;" data-id="${id}">
+      const stato=o.stato||'rosso';
+      const statoInfo=STATI[stato]||STATI.rosso;
+      return `<div class="card" style="flex-direction:column;align-items:stretch;border-left:4px solid ${statoInfo.color};" data-id="${id}">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div class="info"><b>${esc(o.clienteNome)}</b><span>${fmtData(o.data)}</span></div>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -736,6 +764,11 @@ function renderStorico(){
             <button class="mini-btn toggle-detail" data-id="${id}">${iconChevron}</button>
             <button class="mini-btn danger del-ordine" data-id="${id}">${iconTrash}</button>
           </div>
+        </div>
+        <div style="margin-top:8px;">
+          <select class="stato-select" data-id="${id}" style="background-color:${statoInfo.color};">
+            ${Object.keys(STATI).map(k=>`<option value="${k}" ${k===stato?'selected':''}>${STATI[k].label}</option>`).join('')}
+          </select>
         </div>
         <div class="order-detail-rows hidden" id="detail-${id}">
           ${(o.righe||[]).map(r=>`<div><span>${esc(r.nome)}${r.ml?' ('+r.ml+'ml)':''} &times; ${r.quantita}</span><span>${euro(r.totale)}</span></div>`).join('')}
@@ -750,8 +783,35 @@ function renderStorico(){
   wrap.querySelectorAll('.del-ordine').forEach(b=>b.addEventListener('click',()=>{
     if(confirm('Eliminare questo ordine?')){ db.ref('ordini/'+b.dataset.id).remove(); toast('Ordine eliminato'); }
   }));
+  wrap.querySelectorAll('.stato-select').forEach(sel=>sel.addEventListener('change', e=>{
+    const nuovoStato=e.target.value;
+    e.target.style.backgroundColor=STATI[nuovoStato].color;
+    db.ref('ordini/'+e.target.dataset.id).update({stato:nuovoStato});
+  }));
 }
 ['filtro-cliente','filtro-da','filtro-a'].forEach(id=>document.getElementById(id).addEventListener('change', renderStorico));
+
+document.getElementById('export-btn').addEventListener('click', ()=>{
+  if(idsStoricoCorrenti.length===0){ toast('Nessun ordine da esportare'); return; }
+  const righeExport=idsStoricoCorrenti.map(id=>{
+    const o=ordini[id];
+    const prodottiStr=(o.righe||[]).map(r=>`${r.nome}${r.ml?' ('+r.ml+'ml)':''} x${r.quantita}`).join('; ');
+    return {
+      'Data': fmtData(o.data),
+      'Cliente': o.clienteNome||'',
+      'Prodotti': prodottiStr,
+      'Totale (€)': o.totale||0,
+      'Stato': (STATI[o.stato||'rosso']||STATI.rosso).label
+    };
+  });
+  const ws=XLSX.utils.json_to_sheet(righeExport);
+  ws['!cols']=[{wch:16},{wch:24},{wch:50},{wch:12},{wch:16}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ordini');
+  const nomeFile='ordini_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  XLSX.writeFile(wb, nomeFile);
+  toast('Export completato');
+});
 
 /* ---------------- MODAL HELPERS ---------------- */
 function modalSheet(html){
