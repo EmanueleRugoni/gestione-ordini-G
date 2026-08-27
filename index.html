@@ -37,7 +37,7 @@
 html,body{margin:0;padding:0;}
 body{
   background:
-    linear-gradient(rgba(245,242,234,0.55), rgba(245,242,234,0.55)),
+    linear-gradient(rgba(245,242,234,0.30), rgba(245,242,234,0.30)),
     url('background.jpg') center/cover no-repeat,
     repeating-linear-gradient(180deg, rgba(27,67,50,0.03) 0px, rgba(27,67,50,0.03) 1px, transparent 1px, transparent 34px),
     var(--bg);
@@ -105,7 +105,7 @@ h1,h2,h3{font-family:var(--font-display);margin:0;}
 #app{
   max-width:480px;margin:0 auto;min-height:100vh;
   display:flex;flex-direction:column;
-  background:rgba(245,242,234,0.86);
+  background:rgba(178,161,150,0.65);
   position:relative;
 }
 header.topbar{
@@ -322,9 +322,14 @@ nav#tabbar{
 <div id="app" class="hidden">
   <header class="topbar">
     <div class="brand"><span class="dot"></span><h1 id="page-title">Clienti</h1></div>
-    <button class="icon-btn" id="logout-btn" title="Esci">
-      <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M15 17l5-5-5-5M20 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
+    <div style="display:flex;gap:2px;">
+      <button class="icon-btn" id="settings-btn" title="Impostazioni">
+        <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0A1.65 1.65 0 009 4.09V4a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0c.26.604.852 1 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/></svg>
+      </button>
+      <button class="icon-btn" id="logout-btn" title="Esci">
+        <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M15 17l5-5-5-5M20 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
   </header>
 
   <main id="content">
@@ -442,6 +447,63 @@ function toast(msg){
   clearTimeout(toast._tid);
   toast._tid=setTimeout(()=>t.classList.remove('show'),2600);
 }
+
+/* ---------------- IMPOSTAZIONI ASPETTO (Contenitore App) ---------------- */
+function hexToRgb(hex){
+  hex=(hex||'#f5f2ea').replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const num=parseInt(hex,16)||0xf5f2ea;
+  return {r:(num>>16)&255, g:(num>>8)&255, b:num&255};
+}
+function loadAppSettings(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('go_app_settings')||'null');
+    if(saved && saved.color && typeof saved.alpha==='number') return saved;
+  }catch(e){}
+  return {color:'#f5f2ea', alpha:65};
+}
+function applyAppBg(hex, alphaPct){
+  const {r,g,b}=hexToRgb(hex);
+  const el=document.getElementById('app');
+  if(el) el.style.background=`rgba(${r},${g},${b},${alphaPct/100})`;
+}
+let appSettings=loadAppSettings();
+applyAppBg(appSettings.color, appSettings.alpha);
+
+function openSettingsModal(){
+  const prev={...appSettings};
+  const sheet=modalSheet(`
+    <h3>Impostazioni aspetto</h3>
+    <div class="field"><label>Colore Contenitore App</label><input type="color" id="s-color" value="${appSettings.color}" style="width:100%;height:44px;padding:4px;border:1px solid var(--line);border-radius:10px;background:#FBFAF6;"></div>
+    <div class="field"><label>Trasparenza: <span id="s-alpha-val">${appSettings.alpha}</span>%</label>
+      <input type="range" id="s-alpha" min="0" max="100" value="${appSettings.alpha}" style="width:100%;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">Annulla</button>
+      <button class="btn btn-primary" id="m-save">Salva</button>
+    </div>
+  `);
+  const colorInput=sheet.querySelector('#s-color');
+  const alphaInput=sheet.querySelector('#s-alpha');
+  const alphaVal=sheet.querySelector('#s-alpha-val');
+  function preview(){
+    alphaVal.textContent=alphaInput.value;
+    applyAppBg(colorInput.value, Number(alphaInput.value));
+  }
+  colorInput.addEventListener('input', preview);
+  alphaInput.addEventListener('input', preview);
+  sheet.querySelector('#m-cancel').addEventListener('click', ()=>{
+    applyAppBg(prev.color, prev.alpha);
+    closeModal();
+  });
+  sheet.querySelector('#m-save').addEventListener('click', ()=>{
+    appSettings={color:colorInput.value, alpha:Number(alphaInput.value)};
+    localStorage.setItem('go_app_settings', JSON.stringify(appSettings));
+    toast('Impostazioni salvate');
+    closeModal();
+  });
+}
+document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
 
 /* ---------------- LOGIN ---------------- */
 const loginScreen=document.getElementById('login-screen');
