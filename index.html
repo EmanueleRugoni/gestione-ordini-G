@@ -260,20 +260,11 @@ nav#tabbar{
   background:transparent;color:var(--primary);font-weight:600;font-size:14px;margin-bottom:14px;
 }
 .export-btn:active{transform:scale(0.98);}
-.group-header{
-  display:flex;justify-content:space-between;align-items:baseline;
-  padding:6px 2px;margin:18px 0 8px;border-bottom:1.5px solid var(--primary);
+.gruppo-input{
+  flex:1;min-width:110px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;
+  font-size:11.5px;background:#FBFAF6;color:var(--ink-soft);
 }
-.group-header:first-child{margin-top:0;}
-.group-header b{font-size:12px;color:var(--primary);text-transform:uppercase;letter-spacing:0.04em;}
-.group-header span{font-family:var(--font-mono);font-weight:600;color:var(--primary);font-size:13px;}
-.group-drop-zone{border-radius:12px;transition:background .15s, box-shadow .15s;padding:2px;margin:-2px;}
-.group-drop-zone.drag-over{background:rgba(27,67,50,0.06);box-shadow:inset 0 0 0 2px var(--accent);}
-.group-drop-zone.drag-over .group-empty-hint{opacity:1;}
-.group-empty-hint{padding:14px;text-align:center;color:var(--ink-soft);font-size:12px;opacity:.55;border:1.5px dashed var(--line);border-radius:10px;transition:opacity .15s;}
-.drag-handle{cursor:grab;color:var(--ink-soft);padding:4px;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;flex-shrink:0;}
-.drag-ghost{position:fixed;z-index:500;pointer-events:none;opacity:0.92;box-shadow:0 10px 28px rgba(0,0,0,0.28);}
-.ordine-card.dragging-source{opacity:0.35;}
+.gruppo-input:focus{outline:none;border-color:var(--primary-light);color:var(--ink);}
 
 /* ---------- STAMP ---------- */
 #stamp{
@@ -369,12 +360,7 @@ nav#tabbar{
         <input type="date" id="filtro-a">
       </div>
       <div class="filters">
-        <select id="raggruppa-per">
-          <option value="nessuno">Nessun raggruppamento</option>
-          <option value="cliente">Raggruppa per cliente</option>
-          <option value="stato">Raggruppa per stato</option>
-          <option value="mese">Raggruppa per mese</option>
-        </select>
+        <input type="text" id="filtro-gruppo" placeholder="Filtra per codice gruppo...">
       </div>
       <div class="sum-bar"><span>Totale nel periodo</span><b id="somma-storico">&euro; 0,00</b></div>
       <button class="export-btn" id="export-btn">
@@ -758,14 +744,12 @@ const STATI={
 };
 let idsStoricoCorrenti=[];
 
-function cardOrdineHtml(id, draggable){
+function cardOrdineHtml(id){
   const o=ordini[id];
   const stato=o.stato||'rosso';
   const statoInfo=STATI[stato]||STATI.rosso;
-  const handle=draggable ? `<span class="drag-handle">${iconDrag}</span>` : '';
-  return `<div class="card ordine-card" style="flex-direction:column;align-items:stretch;border-left:4px solid ${statoInfo.color};" data-id="${id}" data-stato="${stato}">
+  return `<div class="card" style="flex-direction:column;align-items:stretch;border-left:4px solid ${statoInfo.color};" data-id="${id}">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-      ${handle}
       <div class="info"><b>${esc(o.clienteNome)}</b><span>${fmtData(o.data)}</span></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="amount">${euro(o.totale)}</div>
@@ -773,10 +757,11 @@ function cardOrdineHtml(id, draggable){
         <button class="mini-btn danger del-ordine" data-id="${id}">${iconTrash}</button>
       </div>
     </div>
-    <div style="margin-top:8px;">
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
       <select class="stato-select" data-id="${id}" style="background-color:${statoInfo.color};">
         ${Object.keys(STATI).map(k=>`<option value="${k}" ${k===stato?'selected':''}>${STATI[k].label}</option>`).join('')}
       </select>
+      <input type="text" class="gruppo-input" data-id="${id}" value="${escAttr(o.gruppo||'')}" placeholder="Codice gruppo">
     </div>
     <div class="order-detail-rows hidden" id="detail-${id}">
       ${(o.righe||[]).map(r=>`<div><span>${r.codice?'['+esc(r.codice)+'] ':''}${esc(r.nome)}${r.ml?' ('+r.ml+'ml)':''} &times; ${r.quantita}</span><span>${euro(r.totale)}</span></div>`).join('')}
@@ -784,19 +769,18 @@ function cardOrdineHtml(id, draggable){
   </div>`;
 }
 
-function capitalizza(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
-
 function renderStorico(){
   const wrap=document.getElementById('lista-ordini');
   const clienteF=document.getElementById('filtro-cliente').value;
   const da=document.getElementById('filtro-da').value ? new Date(document.getElementById('filtro-da').value).getTime() : null;
   const a=document.getElementById('filtro-a').value ? new Date(document.getElementById('filtro-a').value).getTime()+86400000 : null;
-  const raggruppaPer=document.getElementById('raggruppa-per').value;
+  const gruppoF=(document.getElementById('filtro-gruppo').value||'').trim().toLowerCase();
 
   let ids=Object.keys(ordini);
   if(clienteF) ids=ids.filter(id=>ordini[id].clienteId===clienteF);
   if(da) ids=ids.filter(id=>ordini[id].data>=da);
   if(a) ids=ids.filter(id=>ordini[id].data<a);
+  if(gruppoF) ids=ids.filter(id=>(ordini[id].gruppo||'').toLowerCase().includes(gruppoF));
   ids.sort((x,y)=>ordini[y].data-ordini[x].data);
   idsStoricoCorrenti=ids;
 
@@ -805,46 +789,8 @@ function renderStorico(){
 
   if(ids.length===0){
     wrap.innerHTML=emptyState('Nessun ordine trovato.');
-  }else if(raggruppaPer==='nessuno'){
-    wrap.innerHTML=ids.map(id=>cardOrdineHtml(id,false)).join('');
   }else{
-    const gruppi=[]; const indice={};
-    function aggiungi(id, key, label){
-      if(!(key in indice)){ indice[key]=gruppi.length; gruppi.push({key,label,ids:[],totale:0}); }
-      const g=gruppi[indice[key]];
-      g.ids.push(id); g.totale+=ordini[id].totale||0;
-    }
-    if(raggruppaPer==='cliente'){
-      ids.forEach(id=>{ const o=ordini[id]; aggiungi(id, o.clienteId||'—', o.clienteNome||'Senza cliente'); });
-      gruppi.sort((x,y)=>x.label.localeCompare(y.label));
-    }else if(raggruppaPer==='stato'){
-      Object.keys(STATI).forEach(k=>{
-        if(!(k in indice)){ indice[k]=gruppi.length; gruppi.push({key:k,label:STATI[k].label,ids:[],totale:0}); }
-        ids.filter(id=>(ordini[id].stato||'rosso')===k).forEach(id=>aggiungi(id, k, STATI[k].label));
-      });
-    }else if(raggruppaPer==='mese'){
-      ids.forEach(id=>{
-        const d=new Date(ordini[id].data);
-        const key=d.getFullYear()+'-'+d.getMonth();
-        const label=capitalizza(d.toLocaleDateString('it-IT',{month:'long',year:'numeric'}));
-        aggiungi(id, key, label);
-      });
-    }
-    const perStato=raggruppaPer==='stato';
-    wrap.innerHTML=gruppi.map(g=>{
-      const headerColor=perStato ? (STATI[g.key]?.color) : null;
-      const headerStyle=headerColor ? `style="background:${headerColor};border-radius:10px;padding:9px 12px;color:#fff;"` : '';
-      const headerInner=headerColor
-        ? `<b style="color:#fff;">${esc(g.label)}</b><span style="color:#fff;">${euro(g.totale)}</span>`
-        : `<b>${esc(g.label)}</b><span>${euro(g.totale)}</span>`;
-      const cardsHtml = g.ids.length===0
-        ? `<div class="group-empty-hint">Trascina qui un ordine</div>`
-        : g.ids.map(id=>cardOrdineHtml(id, perStato)).join('');
-      const bodyHtml = perStato
-        ? `<div class="group-drop-zone" data-stato="${g.key}">${cardsHtml}</div>`
-        : cardsHtml;
-      return `<div class="group-header" ${headerStyle}>${headerInner}</div>${bodyHtml}`;
-    }).join('');
+    wrap.innerHTML=ids.map(id=>cardOrdineHtml(id)).join('');
   }
 
   wrap.querySelectorAll('.toggle-detail').forEach(b=>b.addEventListener('click',()=>{
@@ -858,75 +804,12 @@ function renderStorico(){
     e.target.style.backgroundColor=STATI[nuovoStato].color;
     db.ref('ordini/'+e.target.dataset.id).update({stato:nuovoStato});
   }));
-  if(raggruppaPer==='stato'){
-    attachDragHandlers(wrap);
-  }
+  wrap.querySelectorAll('.gruppo-input').forEach(inp=>inp.addEventListener('change', e=>{
+    db.ref('ordini/'+e.target.dataset.id).update({gruppo:e.target.value.trim()});
+    toast('Codice gruppo salvato');
+  }));
 }
-['filtro-cliente','filtro-da','filtro-a','raggruppa-per'].forEach(id=>document.getElementById(id).addEventListener('change', renderStorico));
-
-/* ---------------- DRAG & DROP (raggruppa per stato) ---------------- */
-let dragState=null;
-
-function attachDragHandlers(wrap){
-  wrap.querySelectorAll('.drag-handle').forEach(handle=>{
-    handle.addEventListener('pointerdown', onDragStart);
-  });
-}
-
-function onDragStart(e){
-  const handle=e.currentTarget;
-  const card=handle.closest('.ordine-card');
-  if(!card) return;
-  e.preventDefault();
-  const rect=card.getBoundingClientRect();
-  const clone=card.cloneNode(true);
-  clone.classList.add('drag-ghost');
-  clone.style.width=rect.width+'px';
-  clone.style.left=rect.left+'px';
-  clone.style.top=rect.top+'px';
-  clone.style.margin='0';
-  document.body.appendChild(clone);
-  card.classList.add('dragging-source');
-  dragState={
-    id:card.dataset.id,
-    sourceStato:card.closest('.group-drop-zone')?.dataset.stato,
-    clone,
-    offsetX:e.clientX-rect.left,
-    offsetY:e.clientY-rect.top,
-    originalCard:card
-  };
-  document.addEventListener('pointermove', onDragMove);
-  document.addEventListener('pointerup', onDragEnd);
-}
-
-function onDragMove(e){
-  if(!dragState) return;
-  dragState.clone.style.left=(e.clientX-dragState.offsetX)+'px';
-  dragState.clone.style.top=(e.clientY-dragState.offsetY)+'px';
-  document.querySelectorAll('.group-drop-zone').forEach(z=>z.classList.remove('drag-over'));
-  const under=document.elementFromPoint(e.clientX, e.clientY);
-  const zone=under?.closest('.group-drop-zone');
-  if(zone) zone.classList.add('drag-over');
-  const margin=60;
-  if(e.clientY<margin) window.scrollBy(0,-16);
-  else if(e.clientY>window.innerHeight-margin) window.scrollBy(0,16);
-}
-
-function onDragEnd(e){
-  if(!dragState) return;
-  document.querySelectorAll('.group-drop-zone').forEach(z=>z.classList.remove('drag-over'));
-  const under=document.elementFromPoint(e.clientX, e.clientY);
-  const zone=under?.closest('.group-drop-zone');
-  dragState.clone.remove();
-  dragState.originalCard.classList.remove('dragging-source');
-  if(zone && zone.dataset.stato && zone.dataset.stato!==dragState.sourceStato){
-    db.ref('ordini/'+dragState.id).update({stato:zone.dataset.stato});
-    toast('Ordine spostato in '+STATI[zone.dataset.stato].label);
-  }
-  document.removeEventListener('pointermove', onDragMove);
-  document.removeEventListener('pointerup', onDragEnd);
-  dragState=null;
-}
+['filtro-cliente','filtro-da','filtro-a','filtro-gruppo'].forEach(id=>document.getElementById(id).addEventListener('input', renderStorico));
 
 document.getElementById('export-btn').addEventListener('click', ()=>{
   if(idsStoricoCorrenti.length===0){ toast('Nessun ordine da esportare'); return; }
@@ -938,11 +821,12 @@ document.getElementById('export-btn').addEventListener('click', ()=>{
       'Cliente': o.clienteNome||'',
       'Prodotti': prodottiStr,
       'Totale (€)': o.totale||0,
-      'Stato': (STATI[o.stato||'rosso']||STATI.rosso).label
+      'Stato': (STATI[o.stato||'rosso']||STATI.rosso).label,
+      'Codice Gruppo': o.gruppo||''
     };
   });
   const ws=XLSX.utils.json_to_sheet(righeExport);
-  ws['!cols']=[{wch:16},{wch:24},{wch:50},{wch:12},{wch:16}];
+  ws['!cols']=[{wch:16},{wch:24},{wch:50},{wch:12},{wch:16},{wch:16}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ordini');
   const nomeFile='ordini_'+new Date().toISOString().slice(0,10)+'.xlsx';
@@ -977,7 +861,6 @@ function emptyState(msg){
 const iconEdit=`<svg viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const iconTrash=`<svg viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const iconChevron=`<svg viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const iconDrag=`<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>`;
 
 /* stato iniziale righe ordine */
 renderRighe();
