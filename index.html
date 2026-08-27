@@ -37,6 +37,8 @@
 html,body{margin:0;padding:0;}
 body{
   background:
+    linear-gradient(rgba(245,242,234,0.55), rgba(245,242,234,0.55)),
+    url('background.jpg') center/cover no-repeat,
     repeating-linear-gradient(180deg, rgba(27,67,50,0.03) 0px, rgba(27,67,50,0.03) 1px, transparent 1px, transparent 34px),
     var(--bg);
   color:var(--ink);
@@ -103,7 +105,7 @@ h1,h2,h3{font-family:var(--font-display);margin:0;}
 #app{
   max-width:480px;margin:0 auto;min-height:100vh;
   display:flex;flex-direction:column;
-  background:var(--bg);
+  background:rgba(245,242,234,0.86);
   position:relative;
 }
 header.topbar{
@@ -345,6 +347,10 @@ nav#tabbar{
       <select class="order-select" id="ordine-cliente">
         <option value="">Seleziona cliente...</option>
       </select>
+      <div class="field">
+        <label>Codice Gruppo</label>
+        <input type="text" id="ordine-gruppo" placeholder="es. Giro Lunedì">
+      </div>
       <div id="righe-ordine"></div>
       <button class="add-riga" id="add-riga-btn">+ Aggiungi prodotto</button>
       <div class="order-total-bar"><span>Totale ordine</span><b id="ordine-totale">&euro; 0,00</b></div>
@@ -715,15 +721,17 @@ document.getElementById('salva-ordine-btn').addEventListener('click', ()=>{
     totale:r.quantita*r.prezzo
   }));
   const totale=righe.reduce((s,r)=>s+r.totale,0);
+  const gruppo=document.getElementById('ordine-gruppo').value.trim();
 
   db.ref('ordini').push({
     clienteId, clienteNome:clienti[clienteId]?.nome||'',
-    righe, totale, data:Date.now(), stato:'rosso'
+    gruppo, righe, totale, data:Date.now(), stato:'rosso'
   }).then(()=>{
     mostraTimbro();
     righeCorrenti=[];
     renderRighe();
     document.getElementById('ordine-cliente').value='';
+    document.getElementById('ordine-gruppo').value='';
     aggiornaTotaleOrdine();
   }).catch(err=>{
     toast("Errore nel salvataggio dell'ordine");
@@ -748,9 +756,10 @@ function cardOrdineHtml(id){
   const o=ordini[id];
   const stato=o.stato||'rosso';
   const statoInfo=STATI[stato]||STATI.rosso;
+  const nomeCliente=clienti[o.clienteId]?.nome || o.clienteNome || 'Cliente eliminato';
   return `<div class="card" style="flex-direction:column;align-items:stretch;border-left:4px solid ${statoInfo.color};" data-id="${id}">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-      <div class="info"><b>${esc(o.clienteNome)}</b><span>${fmtData(o.data)}</span></div>
+      <div class="info"><b>${esc(nomeCliente)}</b><span>${fmtData(o.data)}</span></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="amount">${euro(o.totale)}</div>
         <button class="mini-btn toggle-detail" data-id="${id}">${iconChevron}</button>
@@ -818,7 +827,7 @@ document.getElementById('export-btn').addEventListener('click', ()=>{
     const prodottiStr=(o.righe||[]).map(r=>`${r.codice?'['+r.codice+'] ':''}${r.nome}${r.ml?' ('+r.ml+'ml)':''} x${r.quantita}`).join('; ');
     return {
       'Data': fmtData(o.data),
-      'Cliente': o.clienteNome||'',
+      'Cliente': clienti[o.clienteId]?.nome || o.clienteNome || 'Cliente eliminato',
       'Prodotti': prodottiStr,
       'Totale (€)': o.totale||0,
       'Stato': (STATI[o.stato||'rosso']||STATI.rosso).label,
