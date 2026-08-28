@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gestione Ordini</title>
 <meta name="theme-color" content="#1B4332">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 
@@ -514,7 +514,7 @@ function openSettingsModal(){
 }
 document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
 
-/* ---------------- LOGIN ---------------- */
+/* ---------------- LOGIN (password) ---------------- */
 const loginScreen=document.getElementById('login-screen');
 const appRoot=document.getElementById('app');
 const loginForm=document.getElementById('login-form');
@@ -606,13 +606,16 @@ selectBtn.addEventListener('click', ()=>{
 copyBtn.addEventListener('click', ()=>{
   if(ordiniSelezionati.size===0) return;
   const ids=idsStoricoCorrenti.filter(id=>ordiniSelezionati.has(id));
-  const righeTesto=[];
+  const aggregati=new Map();
   ids.forEach(id=>{
     const o=ordini[id];
     (o.righe||[]).forEach(r=>{
-      righeTesto.push(`x${r.quantita} ${r.codice||r.nome}`);
+      const label=r.codice||r.nome;
+      const prev=aggregati.get(label)||0;
+      aggregati.set(label, prev + (Number(r.quantita)||0));
     });
   });
+  const righeTesto=[...aggregati.entries()].map(([label,qta])=>`x${qta} ${label}`);
   apriPopupCopia(righeTesto.join('\n'));
 });
 function apriPopupCopia(testo){
@@ -855,7 +858,7 @@ document.getElementById('salva-ordine-btn').addEventListener('click', ()=>{
 
   db.ref('ordini').push({
     clienteId, clienteNome:clienti[clienteId]?.nome||'',
-    gruppo, righe, totale, data:Date.now(), stato:'rosso'
+    gruppo, righe, totale, data:Date.now(), stato:'rosso', stato2:'rosso'
   }).then(()=>{
     mostraTimbro();
     righeCorrenti=[];
@@ -880,12 +883,19 @@ const STATI={
   arancio:{label:'CONSEGNATO', color:'#E07B1D'},
   verde:{label:'PAGATO', color:'#2E7D46'}
 };
+const STATI2={
+  rosso:{label:'IN PREPARAZIONE', color:'#7B4B94'},
+  arancio:{label:'SPEDITO', color:'#2E7BB0'},
+  verde:{label:'RILASCIATO', color:'#1B4332'}
+};
 let idsStoricoCorrenti=[];
 
 function cardOrdineHtml(id){
   const o=ordini[id];
   const stato=o.stato||'rosso';
   const statoInfo=STATI[stato]||STATI.rosso;
+  const stato2=o.stato2||'rosso';
+  const stato2Info=STATI2[stato2]||STATI2.rosso;
   const nomeCliente=clienti[o.clienteId]?.nome || o.clienteNome || 'Cliente eliminato';
   return `<div class="card" style="flex-direction:column;align-items:stretch;border-left:4px solid ${statoInfo.color};" data-id="${id}">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
@@ -900,6 +910,9 @@ function cardOrdineHtml(id){
     <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
       <select class="stato-select" data-id="${id}" style="background-color:${statoInfo.color};">
         ${Object.keys(STATI).map(k=>`<option value="${k}" ${k===stato?'selected':''}>${STATI[k].label}</option>`).join('')}
+      </select>
+      <select class="stato2-select" data-id="${id}" style="background-color:${stato2Info.color};">
+        ${Object.keys(STATI2).map(k=>`<option value="${k}" ${k===stato2?'selected':''}>${STATI2[k].label}</option>`).join('')}
       </select>
       <input type="text" class="gruppo-input" data-id="${id}" value="${escAttr(o.gruppo||'')}" placeholder="Codice gruppo">
     </div>
@@ -944,6 +957,11 @@ function renderStorico(){
     e.target.style.backgroundColor=STATI[nuovoStato].color;
     db.ref('ordini/'+e.target.dataset.id).update({stato:nuovoStato});
   }));
+  wrap.querySelectorAll('.stato2-select').forEach(sel=>sel.addEventListener('change', e=>{
+    const nuovoStato=e.target.value;
+    e.target.style.backgroundColor=STATI2[nuovoStato].color;
+    db.ref('ordini/'+e.target.dataset.id).update({stato2:nuovoStato});
+  }));
   wrap.querySelectorAll('.ordine-checkbox').forEach(cb=>cb.addEventListener('change', e=>{
     const id=e.target.dataset.id;
     if(e.target.checked) ordiniSelezionati.add(id); else ordiniSelezionati.delete(id);
@@ -967,11 +985,12 @@ document.getElementById('export-btn').addEventListener('click', ()=>{
       'Prodotti': prodottiStr,
       'Totale (€)': o.totale||0,
       'Stato': (STATI[o.stato||'rosso']||STATI.rosso).label,
+      'Stato Produzione': (STATI2[o.stato2||'rosso']||STATI2.rosso).label,
       'Codice Gruppo': o.gruppo||''
     };
   });
   const ws=XLSX.utils.json_to_sheet(righeExport);
-  ws['!cols']=[{wch:16},{wch:24},{wch:50},{wch:12},{wch:16},{wch:16}];
+  ws['!cols']=[{wch:16},{wch:24},{wch:50},{wch:12},{wch:16},{wch:16},{wch:16}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ordini');
   const nomeFile='ordini_'+new Date().toISOString().slice(0,10)+'.xlsx';
