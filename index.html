@@ -884,9 +884,9 @@ const STATI={
   verde:{label:'PAGATO', color:'#2E7D46'}
 };
 const STATI2={
-  rosso:{label:'IN PREPARAZIONE', color:'#7B4B94'},
-  arancio:{label:'SPEDITO', color:'#2E7BB0'},
-  verde:{label:'RILASCIATO', color:'#1B4332'}
+  rosso:{label:'IN PREPARAZIONE', color:'#E07B1D', text:'#000'},
+  arancio:{label:'SPEDITO', color:'#0B3D66', text:'#fff'},
+  verde:{label:'RILASCIATO', color:'#1B4332', text:'#fff'}
 };
 let idsStoricoCorrenti=[];
 
@@ -911,7 +911,7 @@ function cardOrdineHtml(id){
       <select class="stato-select" data-id="${id}" style="background-color:${statoInfo.color};">
         ${Object.keys(STATI).map(k=>`<option value="${k}" ${k===stato?'selected':''}>${STATI[k].label}</option>`).join('')}
       </select>
-      <select class="stato2-select" data-id="${id}" style="background-color:${stato2Info.color};">
+      <select class="stato2-select" data-id="${id}" style="background-color:${stato2Info.color};color:${stato2Info.text};">
         ${Object.keys(STATI2).map(k=>`<option value="${k}" ${k===stato2?'selected':''}>${STATI2[k].label}</option>`).join('')}
       </select>
       <input type="text" class="gruppo-input" data-id="${id}" value="${escAttr(o.gruppo||'')}" placeholder="Codice gruppo">
@@ -960,6 +960,7 @@ function renderStorico(){
   wrap.querySelectorAll('.stato2-select').forEach(sel=>sel.addEventListener('change', e=>{
     const nuovoStato=e.target.value;
     e.target.style.backgroundColor=STATI2[nuovoStato].color;
+    e.target.style.color=STATI2[nuovoStato].text;
     db.ref('ordini/'+e.target.dataset.id).update({stato2:nuovoStato});
   }));
   wrap.querySelectorAll('.ordine-checkbox').forEach(cb=>cb.addEventListener('change', e=>{
