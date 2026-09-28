@@ -548,6 +548,184 @@ function eseguiBackup(){
   toast('Backup creato ('+righeClienti.length+' clienti, '+righeProdotti.length+' prodotti, '+righeOrdini.length+' ordini)');
 }
 
+/* IMPORT-START */
+function normTxt(v){ return (v===null||v===undefined) ? '' : String(v).trim(); }
+function keyTxt(v){ return normTxt(v).toLowerCase(); }
+function numIt(v){
+  if(typeof v==='number') return v;
+  const n=parseFloat(normTxt(v).replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+function parseDataIt(v){
+  if(typeof v==='number' && v>20000){
+    const d=new Date(Math.round((v-25569)*86400000));
+    return d.getTime()+d.getTimezoneOffset()*60000;
+  }
+  const m=normTxt(v).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?/);
+  if(!m) return null;
+  return new Date(+m[3], +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0)).getTime();
+}
+function chiaveStato(mappa, label, def){
+  const l=keyTxt(label);
+  const k=Object.keys(mappa).find(x=>keyTxt(mappa[x].label)===l);
+  return k||def;
+}
+function parseRigheOrdine(testo, trovaProdotto, totaleOrdine){
+  const parti=normTxt(testo).split(/;\s*/).filter(Boolean);
+  const righe=[];
+  parti.forEach(p=>{
+    const m=p.match(/^(?:\[([^\]]*)\]\s*)?(.*?)(?:\s*\((\d+(?:[.,]\d+)?)\s*ml\))?\s*x\s*(\d+)\s*$/i);
+    if(!m) return;
+    const codice=normTxt(m[1]);
+    const nome=normTxt(m[2]);
+    const ml=m[3]?numIt(m[3]):'';
+    const quantita=parseInt(m[4],10)||0;
+    const prod=trovaProdotto(codice, nome);
+    righe.push({
+      prodottoId: prod?prod.id:'', nome, codice, ml: ml===null?'':ml,
+      quantita, prezzo:0, totale:0, _prezzoProdotto: prod?prod.prezzo:null
+    });
+  });
+  righe.forEach(r=>{
+    let prezzo=r._prezzoProdotto;
+    if(righe.length===1 && quantita_ok(r) && totaleOrdine>0) prezzo=totaleOrdine/r.quantita;
+    if(prezzo===null||prezzo===undefined) prezzo=0;
+    r.prezzo=Math.round(prezzo*100)/100;
+    r.totale=Math.round(r.quantita*r.prezzo*100)/100;
+    delete r._prezzoProdotto;
+  });
+  return righe;
+}
+function quantita_ok(r){ return r.quantita>0; }
+
+function costruisciImport(sheets){
+  const updates={};
+  const st={clienti:{file:0,nuovi:0,saltati:0}, prodotti:{file:0,nuovi:0,saltati:0}, ordini:{file:0,nuovi:0,saltati:0,errori:0}};
+
+  // --- CLIENTI ---
+  const clientePerNome=new Map();
+  Object.keys(clienti).forEach(id=>clientePerNome.set(keyTxt(clienti[id].nome), id));
+  function creaCliente(nome, creato, tel, email){
+    const id=db.ref('clienti').push().key;
+    updates['clienti/'+id]={nome, telefono:tel||'', email:email||'', creato:creato||Date.now()};
+    clientePerNome.set(keyTxt(nome), id);
+    return id;
+  }
+  (sheets.clienti||[]).forEach(r=>{
+    const nome=normTxt(r['Nome e Cognome']);
+    if(!nome) return;
+    st.clienti.file++;
+    if(clientePerNome.has(keyTxt(nome))){ st.clienti.saltati++; return; }
+    creaCliente(nome, parseDataIt(r['Data creazione']), normTxt(r['Telefono']), normTxt(r['Email']));
+    st.clienti.nuovi++;
+  });
+
+  // --- PRODOTTI ---
+  const tuttiProdotti=Object.keys(prodotti).map(id=>({id, nome:prodotti[id].nome, codice:normTxt(prodotti[id].codice), ml:prodotti[id].ml, prezzo:prodotti[id].prezzo}));
+  function cercaProdotto(codice, nome){
+    if(codice){
+      const esatto=tuttiProdotti.find(p=>keyTxt(p.codice)===keyTxt(codice) && keyTxt(p.nome)===keyTxt(nome));
+      if(esatto) return esatto;
+    }
+    return tuttiProdotti.find(p=>keyTxt(p.nome)===keyTxt(nome))
+        || (codice ? tuttiProdotti.find(p=>keyTxt(p.codice)===keyTxt(codice)) : null)
+        || null;
+  }
+  (sheets.prodotti||[]).forEach(r=>{
+    const nome=normTxt(r['Nome']);
+    if(!nome) return;
+    st.prodotti.file++;
+    const codice=normTxt(r['Codice Articolo']);
+    const ml=numIt(r['Millilitri (ml)']);
+    const prezzo=numIt(r['Prezzo (€)']);
+    const esiste = tuttiProdotti.some(p=>keyTxt(p.codice)===keyTxt(codice) && keyTxt(p.nome)===keyTxt(nome) && String(p.ml||'')===String(ml===null?'':ml));
+    if(esiste){ st.prodotti.saltati++; return; }
+    const id=db.ref('prodotti').push().key;
+    const nuovo={nome, codice, ml: ml===null?'':ml, prezzo: prezzo===null?0:prezzo, creato:Date.now()};
+    updates['prodotti/'+id]=nuovo;
+    tuttiProdotti.push({id, nome, codice, ml:nuovo.ml, prezzo:nuovo.prezzo});
+    st.prodotti.nuovi++;
+  });
+
+  // --- ORDINI ---
+  const chiaviOrdini=new Set();
+  const chiaveOrdine=(data, nomeCliente, totale)=>Math.floor(data/60000)+'|'+keyTxt(nomeCliente)+'|'+(Number(totale)||0).toFixed(2);
+  Object.keys(ordini).forEach(id=>{
+    const o=ordini[id];
+    chiaviOrdini.add(chiaveOrdine(o.data, clienti[o.clienteId]?.nome||o.clienteNome||'', o.totale));
+  });
+  (sheets.ordini||[]).forEach(r=>{
+    const data=parseDataIt(r['Data']);
+    const nomeCliente=normTxt(r['Cliente']);
+    const totale=numIt(r['Totale (€)']);
+    if(data===null || (!nomeCliente && totale===null)){ st.ordini.errori++; return; }
+    st.ordini.file++;
+    const tot=totale===null?0:totale;
+    const chiave=chiaveOrdine(data, nomeCliente, tot);
+    if(chiaviOrdini.has(chiave)){ st.ordini.saltati++; return; }
+    chiaviOrdini.add(chiave);
+    let clienteId='';
+    if(nomeCliente && keyTxt(nomeCliente)!=='cliente eliminato'){
+      clienteId = clientePerNome.get(keyTxt(nomeCliente)) || creaCliente(nomeCliente, Date.now(), '', '');
+    }
+    const id=db.ref('ordini').push().key;
+    updates['ordini/'+id]={
+      clienteId, clienteNome:nomeCliente,
+      gruppo:normTxt(r['Codice Gruppo']),
+      righe:parseRigheOrdine(r['Prodotti'], cercaProdotto, tot),
+      totale:tot, data,
+      stato:chiaveStato(STATI, r['Stato'], 'rosso'),
+      stato2:chiaveStato(STATI2, r['Stato Produzione'], 'rosso'),
+      archiviato:/^s[iì]$/i.test(normTxt(r['Archiviato']))
+    };
+    st.ordini.nuovi++;
+  });
+  return {updates, st};
+}
+
+function avviaImport(file){
+  if(typeof XLSX==='undefined'){ toast('Libreria Excel non caricata, riprova'); return; }
+  const reader=new FileReader();
+  reader.onerror=()=>toast('Impossibile leggere il file');
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      const foglio=n=>wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n], {defval:''}) : null;
+      const sheets={clienti:foglio('Elenco Clienti'), prodotti:foglio('Elenco Prodotti'), ordini:foglio('Storico Ordini')};
+      if(!sheets.clienti && !sheets.prodotti && !sheets.ordini){
+        toast('File non riconosciuto: mancano i fogli del backup'); return;
+      }
+      const {updates, st}=costruisciImport(sheets);
+      const nuoviTot=st.clienti.nuovi+st.prodotti.nuovi+st.ordini.nuovi;
+      const riga=(nome,x)=>nome+': '+x.nuovi+' nuovi, '+x.saltati+' già presenti (saltati)';
+      const msg='Importazione da "'+file.name+'"\n\n'+
+        riga('Clienti',st.clienti)+'\n'+riga('Prodotti',st.prodotti)+'\n'+riga('Ordini',st.ordini)+
+        (st.ordini.errori?'\nOrdini non leggibili: '+st.ordini.errori:'')+
+        '\n\nI dati esistenti non vengono modificati né cancellati.\n'+
+        (nuoviTot?'Procedere con l\'importazione?':'Non c\'è nulla di nuovo da importare.');
+      if(!nuoviTot){ alert(msg); return; }
+      if(!confirm(msg)) return;
+      db.ref().update(updates).then(()=>{
+        toast('Import completato: '+st.clienti.nuovi+' clienti, '+st.prodotti.nuovi+' prodotti, '+st.ordini.nuovi+' ordini');
+      }).catch(err=>{
+        console.error(err);
+        toast('Import non riuscito: '+(err.code||err.message));
+      });
+    }catch(err){
+      console.error(err);
+      toast('File non valido o danneggiato');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function scegliFileImport(){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='.xlsx,.xls';
+  inp.addEventListener('change', ()=>{ if(inp.files[0]) avviaImport(inp.files[0]); });
+  inp.click();
+}
+/* IMPORT-END */
+
 function openSettingsModal(){
   const prev={...appSettings};
   const sheet=modalSheet(`
@@ -558,7 +736,10 @@ function openSettingsModal(){
     </div>
     <div class="field">
       <label>Dati</label>
-      <button type="button" class="btn btn-ghost" id="s-backup" style="width:100%;">Backup (Excel)</button>
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-ghost" id="s-backup" style="flex:1;">Backup (Excel)</button>
+        <button type="button" class="btn btn-ghost" id="s-import" style="flex:1;">Import (Excel)</button>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">Annulla</button>
@@ -575,6 +756,7 @@ function openSettingsModal(){
   colorInput.addEventListener('input', preview);
   alphaInput.addEventListener('input', preview);
   sheet.querySelector('#s-backup').addEventListener('click', eseguiBackup);
+  sheet.querySelector('#s-import').addEventListener('click', scegliFileImport);
   sheet.querySelector('#m-cancel').addEventListener('click', ()=>{
     applyAppBg(prev.color, prev.alpha);
     closeModal();
